@@ -34,9 +34,7 @@ PROVIDERS = {
         'key': AGNES_KEY,
         'models': ['agnes-2.5-flash', 'agnes-2.5-pro', 'agnes-2.0-flash'],
     },
-        'name': 'DeepSeek',
-        'key': API_KEY,
-    },
+
 }
 DEFAULT_MODEL = 'agnes-2.5-flash'  # 默认用免费的 Agnes
 
