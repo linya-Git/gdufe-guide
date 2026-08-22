@@ -17,12 +17,12 @@ AGNES_KEY = ''
 env_file = BASE / '.env'
 if env_file.exists():
     for line in env_file.read_text().splitlines():
-        if line.startswith('DEEPSEEK_API_KEY='):
+        if line.startswith('AGNES_API_KEY='):
             API_KEY = line.split('=', 1)[1].strip()
         elif line.startswith('AGNES_API_KEY='):
             AGNES_KEY = line.split('=', 1)[1].strip()
 if not API_KEY:
-    API_KEY = os.environ.get('DEEPSEEK_API_KEY', '')
+    API_KEY = os.environ.get('AGNES_API_KEY', '')
 if not AGNES_KEY:
     AGNES_KEY = os.environ.get('AGNES_API_KEY', '')
 
@@ -376,7 +376,7 @@ class Handler(BaseHTTPRequestHandler):
         if not API_KEY:
             # 无 key 时降级为纯检索
             return self._send(200, json.dumps({
-                'answer': '（未配置 DEEPSEEK_API_KEY，以下为检索到的资料）\n\n' + '\n\n'.join(
+                'answer': '（未配置 AGNES_API_KEY，以下为检索到的资料）\n\n' + '\n\n'.join(
                     f'【{r["source"]} / {r["section"]}】\n{r["text"]}' for r in results),
                 'references': results, 'stream': False,
             }, ensure_ascii=False))
