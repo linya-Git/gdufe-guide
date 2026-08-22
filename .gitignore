@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+rag/index/
+feedback/feedback.jsonl
+*.log
+tmp/
+.openclaw/tmp/
+.env
