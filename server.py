@@ -34,11 +34,8 @@ PROVIDERS = {
         'key': AGNES_KEY,
         'models': ['agnes-2.5-flash', 'agnes-2.5-pro', 'agnes-2.0-flash'],
     },
-    'deepseek': {
         'name': 'DeepSeek',
-        'url': 'https://api.deepseek.com/chat/completions',
         'key': API_KEY,
-        'models': ['deepseek-chat'],
     },
 }
 DEFAULT_MODEL = 'agnes-2.5-flash'  # 默认用免费的 Agnes
@@ -220,7 +217,6 @@ def resolve_provider(model):
     return 'agnes', DEFAULT_MODEL
 
 def call_llm(messages, model=None, stream=True):
-    """调用 LLM（支持 agnes/deepseek），返回 urllib 响应。"""
     model = model or DEFAULT_MODEL
     pname, resolved = resolve_provider(model)
     p = PROVIDERS[pname]
