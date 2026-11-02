@@ -12,17 +12,12 @@ BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE))
 
 # --- 读取 API key（.env，chmod 600） ---
-API_KEY = ''
 AGNES_KEY = ''
 env_file = BASE / '.env'
 if env_file.exists():
     for line in env_file.read_text().splitlines():
         if line.startswith('AGNES_API_KEY='):
-            API_KEY = line.split('=', 1)[1].strip()
-        elif line.startswith('AGNES_API_KEY='):
             AGNES_KEY = line.split('=', 1)[1].strip()
-if not API_KEY:
-    API_KEY = os.environ.get('AGNES_API_KEY', '')
 if not AGNES_KEY:
     AGNES_KEY = os.environ.get('AGNES_API_KEY', '')
 
@@ -30,11 +25,10 @@ if not AGNES_KEY:
 PROVIDERS = {
     'agnes': {
         'name': 'Agnes（免费）',
-        'url': 'https://api.agnes-ai.cn/v1/chat/completions',
+        'url': 'https://apihub.agnes-ai.com/v1/chat/completions',
         'key': AGNES_KEY,
-        'models': ['agnes-2.5-flash', 'agnes-2.5-pro', 'agnes-2.0-flash'],
+        'models': ['agnes-2.5-flash'],
     },
-
 }
 DEFAULT_MODEL = 'agnes-2.5-flash'  # 默认用免费的 Agnes
 
@@ -367,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, json.dumps({'error': 'empty query'}))
 
         messages, results = build_prompt(query, history)
-        if not API_KEY:
+        if not AGNES_KEY:
             # 无 key 时降级为纯检索
             return self._send(200, json.dumps({
                 'answer': '（未配置 AGNES_API_KEY，以下为检索到的资料）\n\n' + '\n\n'.join(
