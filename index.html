@@ -194,6 +194,8 @@ function mdToHtml(md) {
   // 标题、分割线前后不留 <br>，间距交给 CSS
   md = md.replace(/(?:<br>)+(<h[34]>|<hr>)/g, '$1');
   md = md.replace(/(<\/h[34]>|<hr>)(?:<br>)+/g, '$1');
+  // 兑底：整个气泡开头不留任何换行标签
+  md = md.replace(/^(?:\s|<br\s*\/?>)+/i, '');
   return md;
 }
 
