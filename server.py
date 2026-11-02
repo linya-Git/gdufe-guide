@@ -86,28 +86,93 @@ def record_missing(query, max_score, results, answer_tail=''):
 # --- 延迟导入 RAG（首次请求时构建检索器，线程安全） ---
 _search = None
 _search_lock = threading.Lock()
+
+
+def _build_vector_search():
+    """向量检索：需要 chromadb + fastembed + 预建索引（本地用）。"""
+    import chromadb
+    from fastembed import TextEmbedding
+    os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
+    os.environ.setdefault('HF_HUB_DISABLE_XET', '1')
+    client = chromadb.PersistentClient(path=str(BASE / 'rag' / 'index'))
+    col = client.get_collection('gdufe_guide')
+    model = TextEmbedding(model_name='BAAI/bge-small-zh-v1.5')
+
+    def search(query, topk=6):
+        emb = list(model.embed([query]))[0]
+        res = col.query(query_embeddings=[emb.tolist()], n_results=topk,
+                        include=['documents', 'metadatas', 'distances'])
+        out = []
+        for doc, meta, dist in zip(res['documents'][0], res['metadatas'][0], res['distances'][0]):
+            out.append({'text': doc, 'source': meta['source'], 'section': meta['section'],
+                        'score': round(1 - dist, 4)})
+        return out
+
+    return search
+
+
+def _build_keyword_search():
+    """纯标准库的关键词检索：读 kb/*.md，按二级标题切块，字符二元组打分。
+
+    没有向量库、没有预建索引的环境（比如 Vercel）靠它兜底。
+    """
+    kb_dir = BASE / 'kb'
+    docs = []
+    if kb_dir.exists():
+        for f in sorted(kb_dir.glob('*.md')):
+            try:
+                text = f.read_text(encoding='utf-8', errors='ignore')
+            except OSError:
+                continue
+            for part in re.split(r'\n(?=## )', text):
+                part = part.strip()
+                if len(part) < 10:
+                    continue
+                m = re.match(r'##\s*(.+)', part)
+                docs.append({
+                    'source': f.name,
+                    'section': (m.group(1).strip() if m else '正文')[:40],
+                    'text': part,
+                })
+    if not docs:
+        return lambda query, topk=6: []
+
+    def bigrams(s):
+        s = re.sub(r'\s+', '', s)
+        if len(s) < 2:
+            return {s} if s else set()
+        return {s[i:i + 2] for i in range(len(s) - 1)}
+
+    indexed = [(d, bigrams(d['text'])) for d in docs]
+
+    def search(query, topk=6):
+        qg = bigrams(query)
+        if not qg:
+            return []
+        scored = []
+        for d, grams in indexed:
+            hit = len(qg & grams)
+            if hit:
+                scored.append((hit / len(qg), d))
+        scored.sort(key=lambda x: -x[0])
+        return [
+            {'text': d['text'][:900], 'source': d['source'],
+             'section': d['section'], 'score': round(s, 4)}
+            for s, d in scored[:topk]
+        ]
+
+    return search
+
+
 def get_search():
     global _search
     if _search is None:
         with _search_lock:
             if _search is None:
-                import chromadb
-                from fastembed import TextEmbedding
-                os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
-                os.environ.setdefault('HF_HUB_DISABLE_XET', '1')
-                client = chromadb.PersistentClient(path=str(BASE / 'rag' / 'index'))
-                col = client.get_collection('gdufe_guide')
-                model = TextEmbedding(model_name='BAAI/bge-small-zh-v1.5')
-                def search(query, topk=6):
-                    emb = list(model.embed([query]))[0]
-                    res = col.query(query_embeddings=[emb.tolist()], n_results=topk,
-                                    include=['documents', 'metadatas', 'distances'])
-                    out = []
-                    for doc, meta, dist in zip(res['documents'][0], res['metadatas'][0], res['distances'][0]):
-                        out.append({'text': doc, 'source': meta['source'], 'section': meta['section'],
-                                    'score': round(1 - dist, 4)})
-                    return out
-                _search = search
+                try:
+                    _search = _build_vector_search()
+                except Exception:
+                    _search = _build_keyword_search()
     return _search
 
 SYSTEM_PROMPT = """你是"广财新生攻略助手"，专属于广东财经大学（广财）的新生校园生活助手。
