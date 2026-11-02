@@ -487,7 +487,11 @@ class Handler(BaseHTTPRequestHandler):
                     blobs = sorted(data.get('blobs', []), key=lambda b: b.get('uploadedAt', ''), reverse=True)[:80]
                     for b in blobs:
                         try:
-                            with urllib.request.urlopen(b['url'], timeout=10) as r:
+                            req = urllib.request.Request(
+                                b['url'],
+                                headers={'Authorization': f'Bearer {_blob_token()}'},
+                            )
+                            with urllib.request.urlopen(req, timeout=10) as r:
                                 items.append(json.loads(r.read().decode() or '{}'))
                         except Exception:
                             pass

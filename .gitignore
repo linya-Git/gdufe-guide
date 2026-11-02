@@ -6,3 +6,5 @@ feedback/feedback.jsonl
 tmp/
 .openclaw/tmp/
 .env
+.vercel
+.env*
