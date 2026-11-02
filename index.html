@@ -37,7 +37,9 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, "P
 .msg.user .bubble { background: var(--user-bubble); border-color: transparent; }
 .bubble pre { background: #0d0f14; padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 13px; margin: 8px 0; }
 .bubble code { background: #0d0f14; padding: 2px 5px; border-radius: 4px; font-size: 13px; }
-.bubble h3, .bubble h4 { margin: 10px 0 6px; }
+.bubble h3, .bubble h4 { margin: 14px 0 8px; }
+.bubble h3:first-child, .bubble h4:first-child { margin-top: 0; }
+.bubble hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .bubble ul, .bubble ol { padding-left: 20px; margin: 6px 0; }
 .bubble p { margin: 6px 0; }
 .cursor { display: inline-block; width: 8px; height: 16px; background: var(--accent); margin-left: 2px; vertical-align: -2px; animation: blink 1s infinite; }
@@ -177,10 +179,21 @@ function mdToHtml(md) {
   md = esc(md);
   md = md.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
   md = md.replace(/`([^`]+)`/g, '<code>$1</code>');
-  md = md.replace(/^### (.+)$/gm, '<h4>$1</h4>');
-  md = md.replace(/^## (.+)$/gm, '<h3>$1</h3>');
-  md = md.replace(/^- (.+)$/gm, '• $1');
+  // 分隔线：单独一行的 --- / *** / ___
+  md = md.replace(/^\s*[-*_]{3,}\s*$/gm, '<hr>');
+  // 标题（吃掉整行，不留下换行）
+  md = md.replace(/^\s*#### (.+)$/gm, '<h4>$1</h4>');
+  md = md.replace(/^\s*### (.+)$/gm, '<h3>$1</h3>');
+  md = md.replace(/^\s*## (.+)$/gm, '<h3>$1</h3>');
+  // 无序列表
+  md = md.replace(/^\s*[-*] (.+)$/gm, '• $1');
+  // 两个以上换行算段落，单换行算折行
+  md = md.replace(/\n{2,}/g, '\u0000');
   md = md.replace(/\n/g, '<br>');
+  md = md.replace(/\u0000/g, '<br><br>');
+  // 标题、分割线前后不留 <br>，间距交给 CSS
+  md = md.replace(/(?:<br>)+(<h[34]>|<hr>)/g, '$1');
+  md = md.replace(/(<\/h[34]>|<hr>)(?:<br>)+/g, '$1');
   return md;
 }
 
