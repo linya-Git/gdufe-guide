@@ -167,6 +167,12 @@ function showBigImg(src) {
 
 /* ---------- 聊天 ---------- */
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function tidyAnswer(s, final) {
+  let out = s.replace(/^[\s\u200b\ufeff]+/, '').replace(/\n{3,}/g, '\n\n');
+  if (final) out = out.replace(/[\s\u200b\ufeff]+$/, '');
+  return out;
+}
+
 function mdToHtml(md) {
   md = esc(md);
   md = md.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
@@ -282,9 +288,9 @@ async function send(text) {
           if (!p.startsWith('data:')) continue;
           let obj; try { obj = JSON.parse(p.slice(5).trim()); } catch { continue; }
           if (obj.type === 'refs') { refs = obj.refs || []; imgs = obj.images || []; }
-          else if (obj.type === 'delta') { answer += obj.text; bubble.innerHTML = mdToHtml(answer) + '<span class="cursor"></span>'; chatEl.scrollTop = chatEl.scrollHeight; }
+          else if (obj.type === 'delta') { answer += obj.text; bubble.innerHTML = mdToHtml(tidyAnswer(answer, false)) + '<span class="cursor"></span>'; chatEl.scrollTop = chatEl.scrollHeight; }
           else if (obj.type === 'error') { bubble.innerHTML = '⚠️ ' + esc(obj.text); }
-          else if (obj.type === 'done') { finished = true; break; }
+          else if (obj.type === 'done') { bubble.innerHTML = mdToHtml(tidyAnswer(answer, true)); finished = true; break; }
         }
       }
     } else {
