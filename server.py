@@ -111,6 +111,26 @@ def _build_vector_search():
     return search
 
 
+# 检索前剔掉的虚词，避免“是什么/怎么样”这类词把不相关段落拉上来
+STOPWORDS = [
+    '是什么', '是啥', '什么', '怎么', '怎样', '如何', '为什么',
+    '有没有', '能不能', '可不可以', '哪些', '多少', '请问',
+    '介绍一下', '介绍', '一下', '告诉我', '我想知道', '想问',
+]
+
+# 常见缩写 → 全称，用于检索时扩展查询
+SYNONYMS = {
+    '素拓': '素质拓展',
+    '广财': '广东财经大学',
+    '军训': '军事训练',
+    '绩点': '学分成绩',
+    '二课': '第二课堂',
+    '综测': '综合素质测评',
+    '转专': '转专业',
+    '宿管': '宿舍管理',
+}
+
+
 def _build_keyword_search():
     """纯标准库的关键词检索：读 kb/*.md，按二级标题切块，字符二元组打分。
 
@@ -146,19 +166,42 @@ def _build_keyword_search():
     indexed = [(d, bigrams(d['text'])) for d in docs]
 
     def search(query, topk=6):
-        qg = bigrams(query)
-        if not qg:
-            return []
-        scored = []
-        for d, grams in indexed:
-            hit = len(qg & grams)
-            if hit:
-                scored.append((hit / len(qg), d))
-        scored.sort(key=lambda x: -x[0])
+        # 先剔虚词："素拓是什么" → "素拓"，避免"是什么"去匹配无关段落
+        core = query
+        for w in STOPWORDS:
+            core = core.replace(w, ' ')
+        core = re.sub(r'\s+', '', core).strip()
+        if len(core) < 2:
+            core = query
+
+        # 原句 + 缩写展开，各算一遍取最高分
+        variants = [core]
+        for abbr, full in SYNONYMS.items():
+            if abbr in core and full not in core:
+                variants.append(core.replace(abbr, full))
+
+        best = {}
+        for q in variants:
+            qg = bigrams(q)
+            if not qg:
+                continue
+            for d, grams in indexed:
+                hit = len(qg & grams)
+                if not hit:
+                    continue
+                score = hit / len(qg)
+                # 命中关键词的段落额外加权，提一下排序区分度
+                if q in d['text']:
+                    score += 0.5
+                cur = best.get(id(d))
+                if cur is None or score > cur[0]:
+                    best[id(d)] = (score, d)
+
+        ranked = sorted(best.values(), key=lambda x: -x[0])[:topk]
         return [
             {'text': d['text'][:900], 'source': d['source'],
-             'section': d['section'], 'score': round(s, 4)}
-            for s, d in scored[:topk]
+             'section': d['section'], 'score': round(min(s, 1.0), 4)}
+            for s, d in ranked
         ]
 
     return search
@@ -449,14 +492,21 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Connection', 'close')
         self.end_headers()
         self.close_connection = True
-        # 先发引用（按 来源/章节 去重）+ 相关图片
+        # 先发引用：按分数排序，只留跟第一名接近的，同类去重，最多 4 条
+        top_score = max((r.get('score', 0) for r in results), default=0)
+        cutoff = max(0.18, top_score * 0.6)
         seen_refs = set()
         dedup_refs = []
-        for r in results:
+        for r in sorted(results, key=lambda x: -x.get('score', 0)):
             key = (r.get('source'), r.get('section'))
-            if key not in seen_refs:
-                seen_refs.add(key)
-                dedup_refs.append(r)
+            if key in seen_refs:
+                continue
+            if r.get('score', 0) < cutoff:
+                continue
+            seen_refs.add(key)
+            dedup_refs.append(r)
+            if len(dedup_refs) >= 4:
+                break
         imgs = related_images(query, results)
         self.wfile.write(f'data: {json.dumps({"type": "refs", "refs": dedup_refs, "images": imgs}, ensure_ascii=False)}\n\n'.encode())
         answer_text = ''

@@ -216,8 +216,11 @@ function renderExtras(wrap, refs, imgs) {
     refs.forEach(r => {
       const s = document.createElement('span');
       s.className = 'ref';
+      let src = (r.source || '').replace(/\.md$/i, '').replace(/^\d+[-_\s]*/, '');
       let sec = (r.section || '').replace('图片内容（OCR识别）', '相关图片').replace('图片内容（OCR 识别）', '相关图片');
-      s.textContent = r.source.replace('.md', '') + ' / ' + sec;
+      if (sec.length > 14) sec = sec.slice(0, 14) + '…';
+      s.textContent = sec ? (src + ' / ' + sec) : src;
+      s.title = r.source + ' / ' + (r.section || '');
       s.onclick = () => openKb(r.source);
       extra.appendChild(s);
     });
