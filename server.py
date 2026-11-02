@@ -97,8 +97,13 @@ def record_feedback(entry):
             stamp = time.strftime('%Y%m%dT%H%M%S')
             _blob_put(f'feedback/{stamp}-{secrets.token_hex(4)}.json', payload)
             return True
-        except Exception:
-            pass
+        except Exception as e:
+            print(f'[feedback] blob 写入失败: {type(e).__name__}: {e}', flush=True)
+            try:
+                resp = e.read().decode()[:200]
+                print(f'[feedback] 响应: {resp}', flush=True)
+            except Exception:
+                pass
 
     with LOCK:
         try:
