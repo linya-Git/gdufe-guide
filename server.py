@@ -68,7 +68,7 @@ def _blob_put(pathname, payload):
         headers={
             'Authorization': f'Bearer {_blob_token()}',
             'x-api-version': '7',
-            'x-vercel-blob-access': 'public',
+            'x-vercel-blob-access': 'private',
             'Content-Type': 'application/json; charset=utf-8',
         },
     )
