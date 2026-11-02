@@ -4,7 +4,7 @@
 启动:  python3 server.py [port]
 访问:  http://127.0.0.1:8899
 """
-import json, os, re, sys, time, threading, urllib.request, urllib.parse
+import json, os, re, sys, time, threading, secrets, urllib.request, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -55,16 +55,59 @@ _last_missing_lock = threading.Lock()
 def is_gdufe_related(q):
     return any(k in q for k in GDUFE_KEYWORDS)
 
+def _blob_token():
+    return os.environ.get('BLOB_READ_WRITE_TOKEN', '')
+
+
+def _blob_put(pathname, payload):
+    """直接调 Vercel Blob 的 HTTP 接口存一个 JSON 文件，不依赖 SDK。"""
+    req = urllib.request.Request(
+        'https://blob.vercel-storage.com/' + pathname,
+        data=payload.encode('utf-8'),
+        method='PUT',
+        headers={
+            'Authorization': f'Bearer {_blob_token()}',
+            'x-api-version': '7',
+            'x-vercel-blob-access': 'public',
+            'Content-Type': 'application/json; charset=utf-8',
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode() or '{}')
+
+
+def _blob_list(prefix, limit=100):
+    url = ('https://blob.vercel-storage.com?prefix='
+           + urllib.parse.quote(prefix) + f'&limit={limit}')
+    req = urllib.request.Request(url, headers={
+        'Authorization': f'Bearer {_blob_token()}',
+        'x-api-version': '7',
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode() or '{}')
+
+
 def record_feedback(entry):
-    """追加一条反馈记录（线程安全）。只读文件系统下静默跳过。"""
+    """记录一条反馈。有 Blob 就存云端，没有就写本地文件，都失败就算了。"""
     entry.setdefault('ts', time.strftime('%Y-%m-%d %H:%M:%S'))
+    payload = json.dumps(entry, ensure_ascii=False)
+
+    if _blob_token():
+        try:
+            stamp = time.strftime('%Y%m%dT%H%M%S')
+            _blob_put(f'feedback/{stamp}-{secrets.token_hex(4)}.json', payload)
+            return True
+        except Exception:
+            pass
+
     with LOCK:
         try:
             with open(FEEDBACK_FILE, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                f.write(payload + '\n')
+            return True
         except OSError:
             # Vercel 等只读环境：写不了就放弃记录，不要影响问答
-            pass
+            return False
 
 def record_missing(query, max_score, results, answer_tail=''):
     """记录 missing 反馈，60 秒内同问题去重。"""
@@ -431,6 +474,37 @@ class Handler(BaseHTTPRequestHandler):
             out = [{'provider': pname, 'name': p['name'], 'models': p['models']}
                    for pname, p in PROVIDERS.items()]
             self._send(200, json.dumps(out, ensure_ascii=False))
+        elif path == '/api/unanswered':
+            # 查看未命中问题：需要 FEEDBACK_KEY 环境变量匹配
+            key = urllib.parse.parse_qs(parsed.query).get('key', [''])[0]
+            expect = os.environ.get('FEEDBACK_KEY', '')
+            if not expect or key != expect:
+                return self._send(401, json.dumps({'error': 'unauthorized'}, ensure_ascii=False))
+            items = []
+            if _blob_token():
+                try:
+                    data = _blob_list('feedback/')
+                    blobs = sorted(data.get('blobs', []), key=lambda b: b.get('uploadedAt', ''), reverse=True)[:80]
+                    for b in blobs:
+                        try:
+                            with urllib.request.urlopen(b['url'], timeout=10) as r:
+                                items.append(json.loads(r.read().decode() or '{}'))
+                        except Exception:
+                            pass
+                except Exception as e:
+                    return self._send(500, json.dumps({'error': str(e)}, ensure_ascii=False))
+            else:
+                try:
+                    lines = FEEDBACK_FILE.read_text(encoding='utf-8').splitlines()[-80:]
+                    for ln in lines:
+                        try:
+                            items.append(json.loads(ln))
+                        except Exception:
+                            pass
+                except OSError:
+                    pass
+            items.sort(key=lambda x: x.get('ts', ''), reverse=True)
+            self._send(200, json.dumps({'total': len(items), 'items': items[:50]}, ensure_ascii=False))
         elif path == '/api/images':
             imgs = sorted(p.name for p in (BASE / 'images').glob('*') if p.suffix.lower() in ('.jpeg', '.jpg', '.png', '.gif', '.webp'))
             self._send(200, json.dumps(imgs, ensure_ascii=False))
