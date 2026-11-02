@@ -56,11 +56,15 @@ def is_gdufe_related(q):
     return any(k in q for k in GDUFE_KEYWORDS)
 
 def record_feedback(entry):
-    """追加一条反馈记录（线程安全）。"""
+    """追加一条反馈记录（线程安全）。只读文件系统下静默跳过。"""
     entry.setdefault('ts', time.strftime('%Y-%m-%d %H:%M:%S'))
     with LOCK:
-        with open(FEEDBACK_FILE, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+        try:
+            with open(FEEDBACK_FILE, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+        except OSError:
+            # Vercel 等只读环境：写不了就放弃记录，不要影响问答
+            pass
 
 def record_missing(query, max_score, results, answer_tail=''):
     """记录 missing 反馈，60 秒内同问题去重。"""
